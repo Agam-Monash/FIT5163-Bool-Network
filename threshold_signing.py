@@ -373,3 +373,44 @@ def verify(message:bytes,signature:Signature,group_public_key:bytes)->bool:
         e=_hash(b'challenge',signature.R,group_public_key,message)
         return mul(signature.z)==add(R,mul(e,Y))
     except (ValueError,TypeError,OverflowError):return False
+
+"""
+Test
+
+Create a random Shamir polynomial with constant term `secret`. Its sampled
+shares and corresponding public points let this module be demoed alone.
+"""
+def _demo_dkg_fixture(secret:int,threshold:int,count:int)->tuple[bytes,dict[int,int],dict[int,bytes]]:
+    """Only for tests/demo; actual DKG MUST replace this fixture."""
+    _require(2<=threshold<=count<Q and 1<=secret<Q,"invalid fixture")
+    coefficients=[secret]+[randbelow(Q) for _ in range(threshold-1)]
+    shares={i:sum(coef*pow(i,power,Q) for power,coef in enumerate(coefficients))%Q for i in range(1,count+1)}
+    return encode_point(mul(secret)),shares,{i:encode_point(mul(value)) for i,value in shares.items() if value}
+
+
+"""
+Demonstrates a 3-of-5 committee: choose members 1,3,5; commit nonces;
+assemble one package; sign individually; aggregate; verify a valid message
+and show that changing the message invalidates the original signature.
+"""
+def demo()->None:
+    from secrets import token_bytes
+    group_key, shares, public_shares=_demo_dkg_fixture(123456789,3,5)
+    signers=[Signer(i,shares[i]) for i in (1,3,5)]
+    coordinator=Coordinator(group_key,public_shares,3)
+    sid=token_bytes(32);message=b'Bool Network committee transaction: test only'
+    commitments=[s.commit(sid) for s in signers]
+    pkg=coordinator.package(sid,message,commitments)
+    partials=[s.sign(pkg) for s in signers]
+    signature=coordinator.aggregate(pkg,partials)
+    print('threshold: 3-of-5; active members: 1,3,5')
+    print('group public key:',group_key.hex())
+    print('signature:',signature.to_bytes().hex())
+    print('valid message:',verify(message,signature,group_key))
+    print('tampered message:',verify(message+b'!',signature,group_key))
+
+"""
+Only run the example when invoked directly; importing this file does not
+automatically initiate signing or generate shares.
+"""
+if __name__=='__main__':demo()
