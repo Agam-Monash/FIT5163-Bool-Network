@@ -229,3 +229,80 @@ Both signing and verification MUST calculate this challenge identically.
 """
 def _challenge(pkg:SigningPackage, aggregate:Point)->int:
     return _hash(b'challenge',encode_point(aggregate),pkg.group_public_key,pkg.message)
+
+"""
+COMPONENT 7: COORDINATED SIGNING PACKAGE CONSTRUCTION
+Validate and sort all public commitments before distributing the shared
+session package. This version requires EXACTLY threshold active signers.
+"""
+def make_package(session_id:bytes,message:bytes,commitments:Sequence[NonceCommitment],
+                 group_public_key:bytes,threshold:int)->SigningPackage:
+    _require(isinstance(session_id,bytes) and len(session_id)>=16,"session ID must be >=16 bytes")
+    _require(isinstance(message,bytes),"message must be bytes")
+    ordered=tuple(sorted(commitments,key=lambda c:c.member_id))
+    _ids([c.member_id for c in ordered],threshold)
+    _require(len(ordered)==threshold,"exactly threshold signers required in this implementation")
+    _require(decode_point(group_public_key) is not None,"invalid public key")
+    for c in ordered: decode_point(c.hiding);decode_point(c.binding)
+    pkg=SigningPackage(session_id,message,ordered,group_public_key,threshold)
+    _commitment_points(pkg)
+    return pkg
+
+
+"""
+COMPONENT 8: PARTICIPANT-SIDE TWO-ROUND THRESHOLD SIGNING
+Each Signer owns ONE private DKG/handover share. Do not transmit _share or
+_pending to the Coordinator. A real deployment would isolate each signer
+in a separate process/device with authenticated communication.
+"""
+class Signer:
+    """One committee member. Keep instances and their secret shares isolated.
+
+    DKG shares are Shamir f(member_id) modulo secp256k1 order Q.
+    No secret material is returned by any public method.
+    """
+    """
+    Initialise the participant and derive its PUBLIC verification share.
+    Pending stores (private nonce d, private nonce e, public commitment)
+    indexed by session ID; used tracks spent sessions to block nonce reuse.
+    """
+    def __init__(self,member_id:int,secret_share:int):
+        _require(type(member_id) is int and 1<=member_id<Q,"invalid member ID")
+        _require(type(secret_share) is int and 0<=secret_share<Q,"invalid secret share")
+        self.member_id=member_id
+        self._share=secret_share
+        self.public_share=encode_point(mul(secret_share)) if secret_share else None
+        self._pending:dict[bytes,tuple[int,int,NonceCommitment]]={}
+        self._used:set[bytes]=set()
+
+    """
+    ROUND 1: create fresh secret nonce scalars (d,e), publish only D=dG and
+    E=eG, and retain private nonces locally for the matching session.
+    """
+    def commit(self,session_id:bytes)->NonceCommitment:
+        _require(isinstance(session_id,bytes) and len(session_id)>=16,"session ID must be >=16 bytes")
+        _require(session_id not in self._pending and session_id not in self._used,"reused session ID")
+        d=1+randbelow(Q-1);e=1+randbelow(Q-1)
+        c=NonceCommitment(self.member_id,encode_point(mul(d)),encode_point(mul(e)))
+        self._pending[session_id]=(d,e,c)
+        return c
+
+    """
+    ROUND 2: consume the stored nonces ONCE; verify own published commitment
+    is present, compute rho, lambda, c, and return the partial signature:
+    z_i = d_i + rho_i * e_i + lambda_i * share_i * c  (mod Q).
+    Consuming nonces before package validation avoids accidentally reusing
+    them after a failed attempt; callers should start with a new session.
+    """
+    def sign(self,pkg:SigningPackage)->PartialSignature:
+        _require(pkg.session_id in self._pending,"no fresh nonce for session")
+        d,e,commitment=self._pending.pop(pkg.session_id)
+        self._used.add(pkg.session_id)  # burn nonces even if validation fails
+        _require(any(c==commitment for c in pkg.commitments),"own commitment missing or changed")
+        ids=[c.member_id for c in pkg.commitments]
+        _require(self.member_id in ids,"participant not selected")
+        aggregate,_=_commitment_points(pkg)
+        rho=_binding_factors(pkg)[self.member_id]
+        challenge=_challenge(pkg,aggregate)
+        z=(d+rho*e+lagrange(self.member_id,ids)*self._share*challenge)%Q
+        return PartialSignature(self.member_id,z)
