@@ -187,3 +187,45 @@ class Signature:
     def from_bytes(cls,data:bytes)->'Signature':
         _require(isinstance(data,bytes) and len(data)==65, "expected 65-byte signature")
         return cls(data[:33],int.from_bytes(data[33:],'big'))
+
+"""
+COMPONENT 6: SIGNING-ROUND PUBLIC CALCULATIONS
+Construct the public signing transcript used for nonce-binding factors.
+Includes the session ID, participant commitments, public key, message,
+and threshold, making factors specific to this signing session.
+"""
+def _package_data(pkg:SigningPackage) -> bytes:
+    return (pkg.session_id + b''.join(c.member_id.to_bytes(32,'big')+c.hiding+c.binding for c in pkg.commitments)
+            +pkg.group_public_key+pkg.message+pkg.threshold.to_bytes(4,'big'))
+
+
+"""
+Derive per-member rho_i values tied to the entire public transcript.
+Factors prevent freely mixing signer nonce commitments across contexts.
+"""
+def _binding_factors(pkg:SigningPackage)->dict[int,int]:
+    transcript=_package_data(pkg)
+    return {c.member_id:_hash(b'binding',transcript,c.member_id.to_bytes(32,'big')) for c in pkg.commitments}
+
+
+"""
+Combine each signer's public nonce points: R_i = D_i + rho_i * E_i;
+sum R_i to obtain the group nonce R. Abort if the sum is the identity.
+"""
+def _commitment_points(pkg:SigningPackage)->tuple[Point,dict[int,Point]]:
+    factors=_binding_factors(pkg)
+    individual={}
+    aggregate=None
+    for c in pkg.commitments:
+        individual[c.member_id]=add(decode_point(c.hiding),mul(factors[c.member_id],decode_point(c.binding)))
+        aggregate=add(aggregate,individual[c.member_id])
+    _require(aggregate is not None, "aggregate nonce is identity; abort and restart")
+    return aggregate,individual
+
+
+"""
+Generate Schnorr challenge c = H(R, group_public_key, message).
+Both signing and verification MUST calculate this challenge identically.
+"""
+def _challenge(pkg:SigningPackage, aggregate:Point)->int:
+    return _hash(b'challenge',encode_point(aggregate),pkg.group_public_key,pkg.message)
