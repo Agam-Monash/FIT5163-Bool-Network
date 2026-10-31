@@ -138,3 +138,52 @@ def lagrange(i: int, ids: Sequence[int]) -> int:
             numerator=numerator*(-j)%Q
             denominator=denominator*(i-j)%Q
     return numerator*pow(denominator%Q,-1,Q)%Q
+
+"""
+COMPONENT 5: PUBLIC PROTOCOL MESSAGE TYPES
+Immutable value containers passed between signer and coordinator.
+These store public protocol data, NOT the private nonce scalars or shares.
+"""
+@dataclass(frozen=True)
+class NonceCommitment:
+    member_id: int
+    hiding: bytes
+    binding: bytes
+
+
+"""
+Coordinator-to-signers context: message, unique session, active members,
+their nonce commitments, common group public key and signing threshold.
+"""
+@dataclass(frozen=True)
+class SigningPackage:
+    session_id: bytes
+    message: bytes
+    commitments: tuple[NonceCommitment,...]
+    group_public_key: bytes
+    threshold: int
+
+
+"""
+Signer-to-coordinator response: member ID plus its scalar contribution z_i.
+"""
+@dataclass(frozen=True)
+class PartialSignature:
+    member_id: int
+    z: int
+
+
+"""
+Final Schnorr-style group signature: aggregate nonce point R and scalar z.
+The custom 65-byte encoding is NOT a Bitcoin/Ethereum ECDSA signature.
+"""
+@dataclass(frozen=True)
+class Signature:
+    R: bytes
+    z: int
+    def to_bytes(self)->bytes:
+        return self.R + self.z.to_bytes(32,'big')
+    @classmethod
+    def from_bytes(cls,data:bytes)->'Signature':
+        _require(isinstance(data,bytes) and len(data)==65, "expected 65-byte signature")
+        return cls(data[:33],int.from_bytes(data[33:],'big'))
