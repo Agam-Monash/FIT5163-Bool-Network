@@ -306,3 +306,70 @@ class Signer:
         challenge=_challenge(pkg,aggregate)
         z=(d+rho*e+lagrange(self.member_id,ids)*self._share*challenge)%Q
         return PartialSignature(self.member_id,z)
+
+"""
+COMPONENT 9: COORDINATOR-SIDE PUBLIC VERIFICATION AND AGGREGATION
+Holds a mapping member_id -> public verification share and the group key.
+It should NOT receive the participants' private shares or nonce scalars.
+"""
+class Coordinator:
+    """Coordinator sees public shares and commitments, never secret shares."""
+    """
+    Configure the committee verification context supplied by DKG/handover.
+    Public shares must be authentic and consistent with the group key;
+    this constructor checks encodings, not the DKG security proof.
+    """
+    def __init__(self,group_public_key:bytes,public_shares:Mapping[int,bytes],threshold:int):
+        self.group_public_key=group_public_key
+        decode_point(group_public_key)
+        _require(type(threshold) is int and threshold>=2,"invalid threshold")
+        self.threshold=threshold
+        self.public_shares=dict(public_shares)
+        for member_id,public_share in self.public_shares.items():
+            _require(type(member_id) is int and 1<=member_id<Q,"invalid member ID")
+            decode_point(public_share)
+
+    """
+    Assemble a shared signing package from the selected signers' public
+    nonce commitments. Reject unknown committee member IDs.
+    """
+    def package(self,session_id:bytes,message:bytes,commitments:Sequence[NonceCommitment])->SigningPackage:
+        pkg=make_package(session_id,message,commitments,self.group_public_key,self.threshold)
+        _require(all(c.member_id in self.public_shares for c in pkg.commitments),"unknown member")
+        return pkg
+
+    """
+    Verify all partial signatures using public shares, then add their z_i.
+    Check: z_i*G == R_i + c*lambda_i*Y_i for each member.
+    Final signature: (R, sum(z_i) mod Q), independently verified below.
+    """
+    def aggregate(self,pkg:SigningPackage,partials:Sequence[PartialSignature])->Signature:
+        _require(pkg.group_public_key==self.group_public_key and pkg.threshold==self.threshold,"incompatible package")
+        ids=[c.member_id for c in pkg.commitments]
+        _require(len(partials)==len(ids) and set(p.member_id for p in partials)==set(ids),"missing or duplicate partial signatures")
+        aggregate,individual=_commitment_points(pkg)
+        e=_challenge(pkg,aggregate)
+        for partial in partials:
+            _require(type(partial.z) is int and 0<=partial.z<Q,"malformed partial signature")
+            public=decode_point(self.public_shares[partial.member_id])
+            right=add(individual[partial.member_id],mul(e*lagrange(partial.member_id,ids)%Q,public))
+            _require(mul(partial.z)==right,f"invalid signature share from member {partial.member_id}")
+        signature=Signature(encode_point(aggregate),sum(p.z for p in partials)%Q)
+        _require(verify(pkg.message,signature,self.group_public_key),"aggregated signature is invalid; shares/key may be incompatible")
+        return signature
+
+
+"""
+COMPONENT 10: FINAL SIGNATURE VERIFICATION
+Verify z*G == R + H(R, group_public_key, message)*group_public_key.
+This checks cryptographic consistency, not the business validity of a
+blockchain transaction. Invalid data returns False instead of crashing.
+"""
+def verify(message:bytes,signature:Signature,group_public_key:bytes)->bool:
+    try:
+        if not isinstance(message,bytes) or not isinstance(signature,Signature):return False
+        if type(signature.z) is not int or not 0<=signature.z<Q:return False
+        R=decode_point(signature.R);Y=decode_point(group_public_key)
+        e=_hash(b'challenge',signature.R,group_public_key,message)
+        return mul(signature.z)==add(R,mul(e,Y))
+    except (ValueError,TypeError,OverflowError):return False
