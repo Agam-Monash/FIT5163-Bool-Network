@@ -99,3 +99,42 @@ def decode_point(data: bytes) -> Point:
     p=(x,y)
     _require(_on_curve(p), "point is not on the curve")
     return p
+
+"""
+COMPONENT 4: SESSION TRANSCRIPT AND INTERPOLATION HELPERS
+Domain-separated SHA-256 -> scalar modulo Q. Length-prefixing the chunks
+avoids ambiguous concatenations between different hash input fields.
+"""
+def _hash(tag: bytes, *chunks: bytes) -> int:
+    h=sha256(b'FIT5163-THRESHOLD-SCHNORR-V1/'+tag)
+    for chunk in chunks:
+        h.update(len(chunk).to_bytes(8,'big'));h.update(chunk)
+    return int.from_bytes(h.digest(),'big')%Q
+
+
+"""
+Canonicalise signer IDs for deterministic interpolation/transcripts; require
+unique positive Shamir evaluation indices and at least threshold signers.
+"""
+def _ids(ids: Sequence[int], threshold: int) -> tuple[int,...]:
+    result=tuple(sorted(ids))
+    _require(type(threshold) is int and threshold>=2, "threshold must be at least 2")
+    _require(len(result)>=threshold and len(set(result))==len(result), "insufficient or duplicate participants")
+    _require(all(type(i) is int and 1<=i<Q for i in result), "invalid participant ID")
+    return result
+
+
+"""
+Compute interpolation coefficient at x=0 for a selected signer i:
+lambda_i = PRODUCT_{j != i} (-j)/(i-j) modulo Q.
+These weights allow secret shares to contribute to signatures for the
+original group public key without reconstructing the group private key.
+"""
+def lagrange(i: int, ids: Sequence[int]) -> int:
+    _require(i in ids and len(set(ids))==len(ids), "invalid interpolation participants")
+    numerator=denominator=1
+    for j in ids:
+        if j!=i:
+            numerator=numerator*(-j)%Q
+            denominator=denominator*(i-j)%Q
+    return numerator*pow(denominator%Q,-1,Q)%Q
