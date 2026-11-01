@@ -1,6 +1,5 @@
 """board.py -- in-memory stand-in for the blockchain broadcast channel.
-Same API as the BroadcastChannel in the original dkg.py. Payloads stay as
-Python objects here; a real chain needs a serialisation layer (see README)."""
+Same API as the BroadcastChannel in the original dkg.py."""
 from __future__ import annotations
 
 

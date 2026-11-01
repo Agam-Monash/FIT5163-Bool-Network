@@ -1,9 +1,9 @@
 """python main.py  -- run several full epochs: sortition -> DKG/handover -> signing."""
 import time
 
-from src.curve import enc
-from src.epoch import Network, sign
-from src.threshold_signing import verify
+from bool_net.curve import enc
+from bool_net.epoch import Network, sign
+from bool_net.threshold_signing import verify
 
 net = Network(num_nodes=12)
 gpk0 = None

@@ -1,12 +1,10 @@
 """
 curve.py -- the ONE group every module uses: secp256k1.
 
-Why this file exists: the original modules used three different "languages"
+Why this file exists: the original unintegrated modules used three different "languages"
 for the same maths (a mod-p Schnorr group in DKG, the `ecdsa` library in
-handover, hand-rolled tuples in ring_vrf / threshold). Shares are only
-portable between modules if they live in the same group, so everything now
-imports from here. Points are (x, y) tuples, None = point at infinity --
-the representation threshold_signing.py and ring_vrf.py already used.
+handover, hand-rolled tuples in ring_vrf / threshold). everything now
+imports from here. Points are (x, y) tuples, None = point at infinity
 """
 from __future__ import annotations
 
@@ -14,7 +12,7 @@ import hashlib
 from secrets import randbelow
 
 # threshold_signing.py is the reference implementation of the curve.
-from .threshold_signing import (  # noqa: F401  (re-exported)
+from .threshold_signing import (
     P, Q, G, Point, add, decode_point, lagrange, _on_curve,
     encode_point as _enc, mul as _mul,
 )
