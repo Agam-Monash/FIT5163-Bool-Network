@@ -143,7 +143,8 @@ class RingVRF:
     def prove_ring_vrf(
         self,
         epoch_seed: bytes,
-        ring: List[Point]
+        ring: List[Point],
+        tag: bytes = b""
     ) -> Dict:
         """
         Generates a 1-out-of-N Ring-Anonymous Zero-Knowledge Proof (Fiat-Shamir transformed).
@@ -187,6 +188,7 @@ class RingVRF:
         # Compute Fiat-Shamir global challenge C
         hasher = hashlib.sha256()
         hasher.update(epoch_seed)
+        hasher.update(len(tag).to_bytes(4, 'big') + tag)  # PATCH: bind epk
         hasher.update(encode_point(v_pt))
         for pk in ring:
             hasher.update(encode_point(pk))
@@ -208,7 +210,8 @@ class RingVRF:
             "c_list": c_list,
             "z_list": z_list,
             "epoch_seed": epoch_seed,
-            "ring": ring
+            "ring": ring,
+            "tag": tag,  # PATCH
         }
         return proof
 
@@ -222,6 +225,7 @@ class RingVRF:
         z_list = proof["z_list"]
         epoch_seed = proof["epoch_seed"]
         ring = proof["ring"]
+        tag = proof.get("tag", b"")  # PATCH
         n_ring = len(ring)
 
         if len(c_list) != n_ring or len(z_list) != n_ring:
@@ -245,6 +249,7 @@ class RingVRF:
         # Re-compute global challenge C
         hasher = hashlib.sha256()
         hasher.update(epoch_seed)
+        hasher.update(len(tag).to_bytes(4, 'big') + tag)  # PATCH: bind epk
         hasher.update(encode_point(v_pt))
         for pk in ring:
             hasher.update(encode_point(pk))
