@@ -18,13 +18,14 @@ Q = SECP256k1.order
 def inv(a: int) -> int:
     return pow(a, -1, Q)
 
+# evaluate polynomial using horners method
 def eval_poly(coeffs: list[int], x: int) -> int:
     acc = 0
     for c in reversed(coeffs):
         acc = (acc * x + c) % Q
     return acc
 
-
+# computes λⱼ = ∏ ℓ/(ℓ−j)
 def lagrange_at_zero(indices: list[int], j: int) -> int:
     num, den = 1, 1
     for l in indices:
@@ -34,26 +35,27 @@ def lagrange_at_zero(indices: list[int], j: int) -> int:
         den = den * (l - j) % Q
     return num * inv(den) % Q
 
-
+# reconstruct to recover secret
 def reconstruct(shares: dict[int, int]) -> int:
     idx = list(shares)
     return sum(lagrange_at_zero(idx, j) * s for j, s in shares.items()) % Q
 
 
-# message types
+# all msgs published by dealer
 @dataclass
 class DealerMsg:
     dealer: int                      
     shares: dict[int, int]           
     commitments: list                
 
+# class representing an old member
 @dataclass
 class OldMember:
     idx: int          
     psk: int          
     t2: int
     c2: int
-
+    # functin for handling any dealings the member does
     def deal(self) -> DealerMsg:
         coeffs = [self.psk] + [secrets.randbelow(Q) for _ in range(self.t2 - 1)]
         shares = {k: eval_poly(coeffs, k) for k in range(1, self.c2 + 1)}
