@@ -1,6 +1,6 @@
 # DKG component — Bool Network (FIT5163)
 
-Owner: Shyamalan · Python 3.10+ · one dependency: `pip install cryptography`
+one dependency: `pip install cryptography`
 
 ## Files
 

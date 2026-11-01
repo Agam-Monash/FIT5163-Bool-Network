@@ -8,8 +8,8 @@ import os
 import tempfile
 import unittest
 
-from group import P, Q, G, g_pow, random_scalar
-from dkg import (
+from dkg.group import P, Q, G, g_pow, random_scalar
+from dkg.dkg import (
     Party, run_dkg, make_polynomial, eval_polynomial, reconstruct_secret,
     commit_polynomial, verify_share, encrypt_share, decrypt_share,
     lagrange_coefficient, save_results, load_results,

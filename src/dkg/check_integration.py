@@ -9,8 +9,8 @@ teammates' implementations (those live in their own files).
 
 import hashlib
 
-from group import P, Q, g_pow, random_scalar
-from dkg import load_results, lagrange_coefficient, make_polynomial, eval_polynomial
+from dkg.group import P, Q, g_pow, random_scalar
+from dkg.dkg import load_results, lagrange_coefficient, make_polynomial, eval_polynomial
 
 
 def H(*parts: int) -> int:
@@ -50,7 +50,7 @@ for r in signers:  # t old members each re-deal their weighted share
     f = make_polynomial(lam * r.secret_share, new_t)
     for k in new_shares:
         new_shares[k] = (new_shares[k] + eval_polynomial(f, k)) % Q
-from dkg import reconstruct_secret
+from dkg.dkg import reconstruct_secret
 x_new = reconstruct_secret({k: new_shares[k] for k in (1, 3)})
 handover_ok = g_pow(x_new) == Y
 print(f"[handover] new committee's shares still match the SAME public key: {handover_ok}")

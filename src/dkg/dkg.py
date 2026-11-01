@@ -58,7 +58,7 @@ from cryptography.hazmat.primitives.asymmetric.x25519 import (
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
-from group import P, Q, G, g_pow, random_scalar
+from dkg.group import P, Q, G, g_pow, random_scalar
 
 
 # ---------------------------------------------------------------------------

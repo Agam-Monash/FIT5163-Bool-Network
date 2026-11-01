@@ -12,8 +12,8 @@ Also writes dkg_output.json -- the file teammates load.
 import itertools
 import time
 
-from group import g_pow
-from dkg import Party, run_dkg, reconstruct_secret, save_results
+from dkg.group import g_pow
+from dkg.dkg import Party, run_dkg, reconstruct_secret, save_results
 
 
 def short(x: int) -> str:
